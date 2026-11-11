@@ -1,0 +1,31 @@
+<!doctype html><html lang="ru"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1"><meta name="robots" content="noindex,nofollow"><title>Админка</title><link rel="stylesheet" href="/style.css">
+<style>#app{max-width:760px}.g2{display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:10px;margin:12px 0}.g2 div{padding:12px;border-radius:16px;text-align:center}.g2 b{display:block;font-size:1.6rem;color:var(--o)}.g2 small{color:var(--mu)}input[type=password],input[type=date]{background:rgba(255,255,255,.08);border:1px solid var(--bd);border-radius:12px;padding:11px 14px;outline:0;width:100%}table{width:100%;font-size:.82rem;border-collapse:collapse}td{padding:5px 4px;border-bottom:1px solid var(--bd)}td:not(:first-child){text-align:right;white-space:nowrap}.msg{color:var(--o2);margin:8px 0}label{display:flex;gap:8px;align-items:center;margin:10px 0;color:var(--mu);font-size:.9rem}</style></head>
+<body><div id="app"><div class="top"><div class="brand">Корзинка · админка</div></div>
+<div id="login" class="panel"><input id="pw" type="password" placeholder="Пароль"><div class="acts"><button class="btn" id="go">Войти</button></div><div class="msg" id="lm"></div></div>
+<div id="main" hidden>
+<div class="panel"><b id="st"></b><div class="acts"><a class="btn g" id="bk">Скачать резервную копию</a></div></div>
+<div class="panel"><b>Загрузить новый Excel</b><p style="color:var(--mu);font-size:.9rem;margin:6px 0">Два столбца: название и цена. Что уже есть — обновится цена, чего нет — добавится.</p>
+<input type="file" id="f" accept=".xlsx,.csv"><label>Дата цен <input type="date" id="dt" style="width:auto"></label>
+<label><input type="checkbox" id="hide"> Скрыть товары, которых нет в этом файле</label>
+<div class="acts"><button class="btn g" id="pv">Проверить файл</button></div><div class="msg" id="pm"></div><div id="out"></div></div>
+<div class="panel" id="logp"></div></div></div>
+<script>
+const $=s=>document.querySelector(s);let tok=sessionStorage.kzt||'';
+const api=async(p,o={})=>{const r=await fetch(p,{...o,headers:{...(o.headers||{}),authorization:'Bearer '+tok}});const j=await r.json().catch(()=>({}));if(r.status===401&&p!=='/api/login'){sessionStorage.removeItem('kzt');location.reload()}if(!r.ok)throw new Error(j.error||r.status);return j};
+const f=n=>Math.round(n).toLocaleString('ru-RU');
+async function show(){$('#login').hidden=true;$('#main').hidden=false;const s=await api('/api/admin/status');$('#st').textContent=`В базе ${f(s.count)} товаров · цены от ${s.date}`;
+ $('#logp').innerHTML='<b>Последние загрузки</b>'+(s.log.length?'<table>'+s.log.map(l=>`<tr><td>${l.date}</td><td>+${l.added}</td><td>изм. ${l.changed}</td><td>${f(l.total)} строк</td></tr>`).join('')+'</table>':'<p style="color:var(--mu)">Пока не было</p>');
+ $('#bk').onclick=async()=>{const r=await fetch('/api/admin/backup',{headers:{authorization:'Bearer '+tok}});const a=document.createElement('a');a.href=URL.createObjectURL(await r.blob());a.download='catalog-backup.json';a.click()}}
+$('#go').onclick=async()=>{try{const j=await api('/api/login',{method:'POST',body:JSON.stringify({password:$('#pw').value})});tok=j.token;sessionStorage.kzt=tok;show()}catch(e){$('#lm').textContent=e.message}};
+$('#pw').onkeydown=e=>e.key==='Enter'&&$('#go').click();
+$('#f').onchange=()=>{const m=($('#f').files[0]?.name||'').match(/(\d{2})[._-](\d{2})[._-](\d{4})/);if(m)$('#dt').value=`${m[3]}-${m[2]}-${m[1]}`};
+$('#dt').value=new Date().toISOString().slice(0,10);
+$('#pv').onclick=async()=>{const file=$('#f').files[0];if(!file)return $('#pm').textContent='Выберите файл';$('#pm').textContent='Читаю файл…';$('#out').innerHTML='';
+ try{const s=await api(`/api/admin/preview?date=${$('#dt').value}&hide=${$('#hide').checked?1:0}`,{method:'POST',body:await file.arrayBuffer()});$('#pm').textContent='';
+ $('#out').innerHTML=`<div class="g2"><div class="glass"><b>${f(s.added)}</b><small>новых</small></div><div class="glass"><b>${f(s.changed)}</b><small>цена изменилась</small></div><div class="glass"><b>${f(s.same)}</b><small>без изменений</small></div><div class="glass"><b>${f(s.bad)}</b><small>без цены/по весу</small></div><div class="glass"><b>${f(s.missing)}</b><small>нет в файле</small></div></div>
+ ${s.changedS.length?'<table>'+s.changedS.map(r=>`<tr><td>${r[0]}</td><td>${f(r[1])} → ${f(r[2])}</td></tr>`).join('')+'</table>':''}
+ <div class="acts"><button class="btn" id="ap">Применить обновление</button></div>`;
+ $('#ap').onclick=async()=>{try{await api('/api/admin/apply',{method:'POST'});$('#out').innerHTML='<div class="msg">Готово: цены обновлены у всех пользователей.</div>';show()}catch(e){$('#pm').textContent=e.message}}}
+ catch(e){$('#pm').textContent=e.message}};
+if(tok)show().catch(()=>{});
+</script></body></html>
